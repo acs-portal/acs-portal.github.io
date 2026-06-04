@@ -269,12 +269,9 @@
           </div>
         );
 
-        const JobRow = ({ job, index, onChange, onRemove, hasOverlap, overlapMessage, showValidation, availableProjects, dayIndex }) => {
+        const JobRow = ({ job, index, onChange, onRemove, hasOverlap, overlapMessage, showValidation, dayIndex }) => {
           const start = timeToDec(job.startTime); const finish = timeToDec(job.finishTime);
           const crossesMidnight = job.startTime && job.finishTime && finish < start;
-
-          const [showProjectDropdown, setShowProjectDropdown] = useState(false);
-          const projectInputRef = useRef(null);
 
           let duration = 0;
           if (job.startTime && job.finishTime) {
@@ -285,14 +282,8 @@
           const isInvalid = (field) => showValidation && !job[field];
           const isLeave = LEAVE_TYPES.includes(job.asmsRef?.toUpperCase()?.trim());
 
-          const isSiteCustom = job.site && !(availableProjects || []).some(p => p.site === job.site);
-          const filteredProjects = (availableProjects || []).filter(p =>
-              p.ref.toLowerCase().includes((job.asmsRef || '').toLowerCase()) ||
-              p.site.toLowerCase().includes((job.asmsRef || '').toLowerCase())
-          );
-
           return (
-            <div className={`premium-panel rounded-2xl p-5 mb-4 relative animate-fade-in ${hasOverlap ? 'border-red-500/50 bg-red-900/10' : ''} ${showProjectDropdown ? 'z-50' : 'z-10'}`}>
+            <div className={`premium-panel rounded-2xl p-5 mb-4 relative animate-fade-in ${hasOverlap ? 'border-red-500/50 bg-red-900/10' : ''} z-10`}>
               {hasOverlap && (
                 <div className="mb-4 bg-red-500/10 border border-red-500/30 rounded-xl p-3 flex items-start gap-2">
                   <AlertCircle size={18} className="text-red-400 flex-shrink-0 mt-0.5" />
@@ -331,39 +322,11 @@
                     {!isLeave && (
                         <div>
                             <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 block">Project / ACS Ref <span className="text-theme-primary">*</span></label>
-                            <div className="relative" ref={projectInputRef}>
-                                <input type="text" placeholder="Select or type Project Ref" value={job.asmsRef} 
+                            <div className="relative">
+                                <input type="text" placeholder="Type Project Ref" value={job.asmsRef} 
                                     className={`w-full premium-input rounded-lg px-3 py-2.5 text-sm ${isInvalid('asmsRef') ? 'error' : ''}`}
-                                    onFocus={(e) => {
-                                        setShowProjectDropdown(true);
-                                        setTimeout(() => { if (e.target) e.target.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 300);
-                                    }}
-                                    onBlur={() => setTimeout(() => setShowProjectDropdown(false), 200)}
-                                    onChange={(e) => {
-                                        const val = e.target.value;
-                                        onChange(job.id, 'asmsRef', val);
-                                        setShowProjectDropdown(true);
-                                        const matchedProject = (availableProjects || []).find(p => p.ref === val.trim().toUpperCase());
-                                        if (matchedProject && matchedProject.site && !isSiteCustom) {
-                                            onChange(job.id, 'site', matchedProject.site);
-                                        }
-                                    }}
+                                    onChange={(e) => onChange(job.id, 'asmsRef', e.target.value)}
                                 />
-                                {showProjectDropdown && filteredProjects.length > 0 && (
-                                    <ul className="absolute z-50 w-full bg-[#050507] border border-white/20 rounded-xl mt-1 max-h-48 overflow-y-auto shadow-2xl custom-scrollbar top-full left-0">
-                                        {filteredProjects.map(p => (
-                                            <li key={p.ref} className="p-3 text-sm text-slate-300 hover:bg-theme-primary hover:text-black cursor-pointer border-b border-white/5 last:border-0 transition-colors"
-                                                onClick={() => {
-                                                    onChange(job.id, 'asmsRef', p.ref);
-                                                    if (p.site && !isSiteCustom) onChange(job.id, 'site', p.site);
-                                                    setShowProjectDropdown(false);
-                                                }}>
-                                                <div className="font-bold">{p.ref}</div>
-                                                <div className="text-xs opacity-75">{p.site}</div>
-                                            </li>
-                                        ))}
-                                    </ul>
-                                )}
                             </div>
                         </div>
                     )}
@@ -427,53 +390,8 @@
           const [expenses, setExpenses] = useState('');
           const [signatureData, setSignatureData] = useState('');
           const [onCall, setOnCall] = useState(false);
-          const [availableProjects, setAvailableProjects] = useState([]);
 
           const jotFormRef = useRef(null); const isSubmittingRef = useRef(false);
-
-          useEffect(() => {
-              const fetchProjects = async () => {
-                  try {
-                      const sheetUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQid18QM2wwpphH6_e0VqRmoI5uQxCfaffHw30EGZsQ3znxVYdu_ymiPiQBrr0mQEgfhDhg6kuBXLRq/pub?gid=0&single=true&output=csv';
-                      const res = await fetch(sheetUrl);
-                      if (!res.ok) throw new Error('Network response was not ok');
-                      const csvText = await res.text();
-                      const rows = csvText.split('\n').map(row => row.trim()).filter(row => row);
-                      
-                      const parseCSVRow = (text) => {
-                          let result = []; let current = ''; let inQuotes = false;
-                          for (let i = 0; i < text.length; i++) {
-                              let char = text[i];
-                              if (char === '"' && text[i+1] === '"') { current += '"'; i++; }
-                              else if (char === '"') inQuotes = !inQuotes;
-                              else if (char === ',' && !inQuotes) { result.push(current); current = ''; }
-                              else current += char;
-                          }
-                          result.push(current); return result.map(s => s.trim());
-                      };
-
-                      const projectsMap = new Map();
-                      const headers = parseCSVRow(rows[0]).map(h => h.toLowerCase());
-                      let refIdx = headers.findIndex(h => h.includes('ref'));
-                      let siteIdx = headers.findIndex(h => h.includes('site') || h.includes('location') || h.includes('name'));
-                      let statusIdx = headers.findIndex(h => h.includes('status'));
-                      if (refIdx === -1) refIdx = 0; if (siteIdx === -1) siteIdx = 1;
-                      
-                      for (let i = 1; i < rows.length; i++) {
-                          const cols = parseCSVRow(rows[i]);
-                          const ref = cols[refIdx] || '';
-                          const site = cols[siteIdx] || '';
-                          const status = statusIdx !== -1 ? (cols[statusIdx] || '').trim().toLowerCase() : 'active';
-                          if (ref && !ref.toLowerCase().includes('project ref') && status !== 'inactive') {
-                              projectsMap.set(ref.toUpperCase(), site);
-                          }
-                      }
-                      const uniqueProjects = Array.from(projectsMap, ([ref, site]) => ({ ref, site }));
-                      if (uniqueProjects.length > 0) setAvailableProjects(uniqueProjects);
-                  } catch (err) { console.error("Failed to fetch projects from Google Sheets", err); }
-              };
-              fetchProjects();
-          }, []);
 
           // --- WEEKLY CALCULATION ENGINE ---
           // Calculates the 39h rule (Mon-Fri), Saturday 1.5x, Sunday 2.0x, 
@@ -851,7 +769,7 @@
                         )}
 
                         {currentJobs.map((job, idx) => (
-                            <JobRow key={job.id} job={job} index={idx} onChange={handleUpdateJob} onRemove={() => handleRemoveJob(job.id)} hasOverlap={!!jobOverlaps[job.id]} overlapMessage={jobOverlaps[job.id]} showValidation={showValidation} availableProjects={availableProjects} dayIndex={new Date(activeDateStr).getDay()} />
+                            <JobRow key={job.id} job={job} index={idx} onChange={handleUpdateJob} onRemove={() => handleRemoveJob(job.id)} hasOverlap={!!jobOverlaps[job.id]} overlapMessage={jobOverlaps[job.id]} showValidation={showValidation} dayIndex={new Date(activeDateStr).getDay()} />
                         ))}
 
                         {currentJobs.length > 0 && (
