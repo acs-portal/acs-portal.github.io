@@ -152,6 +152,7 @@
         const Pen = (props) => <IconBase {...props}><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></IconBase>;
         const Edit = (props) => <IconBase {...props}><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></IconBase>;
         const Euro = (props) => <IconBase {...props}><path d="M4 10h12M4 14h9M19 6a7.7 7.7 0 0 0-5.2-2A7.9 7.9 0 0 0 6 12c0 4.4 3.5 8 7.8 8 2 0 3.8-.8 5.2-2"/></IconBase>;
+        const Package = (props) => <IconBase {...props}><line x1="16.5" y1="9.4" x2="7.5" y2="4.21"/><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></IconBase>;
 
         const DISPLAY_WEEK_DAYS = [
           { name: 'Monday', offset: 0 }, { name: 'Tuesday', offset: 1 }, { name: 'Wednesday', offset: 2 },
@@ -345,6 +346,37 @@
                     </div>
                 )}
                 
+                {/* Materials Used Toggle & Fields */}
+                {!isLeave && (
+                    <div className="animate-fade-in mb-4 border border-white/10 bg-black/20 p-4 rounded-xl">
+                        <label className="flex items-center gap-3 cursor-pointer w-max">
+                            <input type="checkbox" checked={job.materialsUsed || false} onChange={(e) => onChange(job.id, 'materialsUsed', e.target.checked)} className="w-4 h-4 rounded border-white/20 bg-black/50 text-theme-primary focus:ring-theme-primary accent-theme-primary cursor-pointer" />
+                            <span className="text-[11px] font-bold text-slate-300 uppercase tracking-widest flex items-center gap-2"><Package size={14} className="text-theme-primary"/> Materials Used?</span>
+                        </label>
+                        
+                        {job.materialsUsed && (
+                            <div className="mt-4 space-y-4 animate-slide-up border-t border-white/5 pt-4">
+                                <div>
+                                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 block">Materials Description</label>
+                                    <textarea className="w-full premium-input rounded-lg px-3 py-2.5 text-sm min-h-[80px]" placeholder="List materials used here..." value={job.materialsDescription || ''} onChange={(e) => onChange(job.id, 'materialsDescription', e.target.value)} />
+                                </div>
+                                <div>
+                                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 block">Material Photos / Receipts</label>
+                                    <input type="file" multiple accept="image/*,.pdf" className="block w-full text-sm text-slate-400 file:mr-4 file:py-2.5 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-theme-primary file:text-black hover:file:bg-cyan-400 transition-all cursor-pointer"
+                                        onChange={(e) => {
+                                            const files = Array.from(e.target.files);
+                                            onChange(job.id, 'materialsFiles', files);
+                                        }}
+                                    />
+                                    {job.materialsFiles && job.materialsFiles.length > 0 && (
+                                        <p className="text-xs text-theme-primary font-medium mt-2">{job.materialsFiles.length} photo(s) selected for this job.</p>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                )}
+
                 {/* Generic ACS Status Selection */}
                 {!isLeave && (
                     <div className="animate-fade-in mb-4">
@@ -529,7 +561,7 @@
                   defaultFinish = ''; 
               }
               
-              const newJob = { id: Date.now(), asmsRef: defaultAsmsRef, clientPo: '', startTime: defaultStart, finishTime: defaultFinish, site: defaultSite, status: '' };
+              const newJob = { id: Date.now(), asmsRef: defaultAsmsRef, clientPo: '', startTime: defaultStart, finishTime: defaultFinish, site: defaultSite, status: '', materialsUsed: false, materialsDescription: '', materialsFiles: [] };
               return { ...prev, [activeDateStr]: [...dayJobs, newJob] };
             });
             setShowValidation(false); 
@@ -607,6 +639,37 @@
               daysToProcess.forEach(dateStr => { const dayJobs = timesheetData[dateStr] || []; dayJobs.forEach(job => jobs.push({ ...job, date: dateStr })); });
               return jobs;
           }, [timesheetData, weekStartDate]);
+
+          // Extract grouped materials
+          const combinedMaterials = useMemo(() => {
+              let res = "";
+              allWeekJobs.forEach((job, index) => {
+                  if (job.materialsUsed && job.materialsDescription) {
+                      res += `===JOB_INDEX_${index}===\n${job.materialsDescription}\n`;
+                  }
+              });
+              return res;
+          }, [allWeekJobs]);
+
+          // Propagate files to the hidden input on Review step
+          useEffect(() => {
+              if (currentDayIndex === 7) {
+                  try {
+                      const dt = new DataTransfer();
+                      allWeekJobs.forEach(job => {
+                          if (job.materialsFiles && job.materialsFiles.length > 0) {
+                              job.materialsFiles.forEach(file => dt.items.add(file));
+                          }
+                      });
+                      const fileInput = document.getElementById('hidden_materials_files');
+                      if (fileInput) {
+                          fileInput.files = dt.files;
+                      }
+                  } catch (e) {
+                      console.error("DataTransfer not supported by browser", e);
+                  }
+              }
+          }, [currentDayIndex, allWeekJobs]);
 
           const daysSummary = useMemo(() => {
               return [0,1,2,3,4,5,6].map(offset => {
@@ -836,6 +899,10 @@
                                     <input type="hidden" name="q433_onCall433[]" value="Yes" />
                                 </>
                             )}
+
+                            {/* --- New Material Mappings --- */}
+                            <textarea name="q435_materials" value={combinedMaterials} readOnly style={{ display: 'none' }}></textarea>
+                            <input type="file" id="hidden_materials_files" name="q436_receiptsFor[]" multiple style={{ display: 'none' }} />
 
                             {renderHiddenMatrixInputs()}
 
